@@ -1,0 +1,13 @@
+modem = peripheral.wrap('top')
+modem.transmit(62646, os.getComputerID(), "on")
+modem.open(62646)
+modem.open(os.getComputerID())
+while true do
+  local event, modemSide, senderChannel, replyChannel, message = os.pullEvent("modem_message")
+  if senderChannel == 62646 and message ~= "" then
+    if message == "on" then
+      print(message)
+      modem.transmit(62646, 62646, "<peer>[" .. replyChannel .. "]")
+    end
+  end
+end
