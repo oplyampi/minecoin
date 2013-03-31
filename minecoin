@@ -71,12 +71,19 @@ end
 
 --broadcast to the peer-finding network that computer is online
 openAll()
-transmitAll(pChannel, rChannel, "on")
-
-local netThread = coroutine.create(networking()) --define networking coroutine
+transmitAll(pChannel, rChannel, "on") --notify peer network that computer is able to process Minecoin stuffs
+local netThread = coroutine.create(networking) --define networking coroutine
+coroutine.resume(netThread) --start networking
 term.clear()
 term.setCursorPos(1, 1)
 print("Minecoin Client Version "..clientVersion)
 while true do
-	coroutine.resume(netThread) --start networking
+	term.write("minecoin>") --show that user can input info ('minecoin' is there to differentiate)
+	input = io.read()
+	if string.lower(input) == "exit" then
+		transmitAll(pChannel, rChannel, "off") --notify peer network that computer can no longer process Minecoin stuffs
+		coroutine.yield(netThread)
+		term.clear()
+		return
+	end
 end
