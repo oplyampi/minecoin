@@ -5,6 +5,6 @@ An open-source currency for ComputerCraft that is inspired by Bitcoin.
 
 Links:
 
-ComputerCraft.info - ComputerCraft homepage
+http://computerCraft.info - ComputerCraft homepage
 
-Bitcoin.org - Bitcoin homepage
+http://bitcoin.org - Bitcoin homepage
