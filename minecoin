@@ -17,6 +17,8 @@ rChannel = os.getComputerID()+1 --reply channel; computer ID +1
 
 clientVersion = "A1.0" --Current version of the Minecoin Client; displayed at the top of the terminal when the client is running
 
+running = true --shows that the minecoin client is running; used to stop networking upon program end
+
 --define variables
 numPeers = 0 --how many peers are connected?
 peers = {} --list of connected peers
@@ -26,7 +28,7 @@ modem = {} --holds the modem objects for each open side to allow access by 'mode
 
 --functions
 networking = function() --function that performs background messaging to uphold the p2p network
-	--while true do
+	while running == true do
 		local event, modemSide, senderChannel, replyChannel, message = os.pullEvent("modem_message")
 		if message ~= "" then
 			if message == "on" and senderChannel == pChannel then
@@ -39,7 +41,7 @@ networking = function() --function that performs background messaging to uphold 
 				data = textutils.unserialize(message)
 			end
 		end
-	--end
+	end
 end
 
 openAll = function() --opens all the modems
@@ -63,27 +65,88 @@ transmitAll = function(sendingChannel, replyChannel, message) --sends message us
 	end
 end
 
-relay = function(ignoreModem, sendingChannel, replyChannel, message) --relays a message received on one modem through all other open modems
+initRandom = function() --used to setup the random number generator. seed is designed to be as unique as possible.
+	seed = os.time() + os.clock()
+	seed = seed * os.day()
+	seed = seed - os.computerID()
+	math.randomseed(seed)
+end
+
+generatePrivateKey = function() --generates a new random address (private key only)
+	initRandom()
+	keyP1 = math.random(1000, 9999)
+	initRandom()
+	keyP2 = math.random(1000, 9999)
+	initRandom()
+	keyP3 = math.random(1000, 9999)
+	initRandom()
+	keyP4 = math.random(1000, 9999)
+	finalKey = keyP1 .. keyP2 .. keyP3 .. keyP4
+	return finalKey
+end
+
+getPublicKey = function(privateKey)
 	
 end
 
---start main stuff
+firstRun = function()
+	print("First-time setup...")
+	print("Creating files and folders...")
+	fs.makeDir(".minecoin")
+	fs.makeDir(".minecoin/user")
+	fs.makeDir(".minecoin/blocks")
+	fs.makeDir(".minecoin/transactions")
+	write("Do you have an existing Minecoin wallet? (Y/N)>")
+	input = read()
+	if string.lower(input) == "y" or string.lower(input) == "yes" then
+		print("Private key (you can add more after setup is complete)")
+		write("Key>")
+		input = read()
+		print("Calculating public key...")
+		pubKey = getPublicKey(input)
+		print(pubKey)
+		write("Is this your address? (Y/N)>")
+		input = read()
+		if string.lower(input) == "y" or string.lower(input) == "yes" then
+			
+		elseif string.lower(input) == "n" or string.lower(input) == "no" then
+		print("Creating new wallet. You can retry wallet import after setup is complete")
+		else
+			print("Invalid input. Creating new wallet. You can import an old wallet, if needed, after setup is complete")
+		end
+	elseif string.lower(input) == "n" string.lower(input) == "no" then
+	print("Generating private key...")
+	privKey = generatePrivateKey()
+	print("Saving private key...")
+	wallet = fs.open(".minecoin/user/wallet.dat", w)
+	wallet.write(privKey)
+	wallet.close()
+	print("Calculating public key...")
+	else
+		print("Invalid input. Creating new wallet. You can import an old wallet, if needed, after setup is complete")
+	end
+end
 
---broadcast to the peer-finding network that computer is online
-openAll()
-transmitAll(pChannel, rChannel, "on") --notify peer network that computer is able to process Minecoin stuffs
-local netThread = coroutine.create(networking) --define networking coroutine
-coroutine.resume(netThread) --start networking
+--start main program
 term.clear()
 term.setCursorPos(1, 1)
 print("Minecoin Client Version "..clientVersion)
+
+if not fs.isDir(".minecoin") then --checks for existing minecoin stuffs
+	firstRun()
+end
+
+openAll() --open all modems so that "on" broadcast goes as far as possible
+transmitAll(pChannel, rChannel, "on") --notify peer network that computer is able to process Minecoin stuffs
+local netThread = coroutine.create(networking) --define networking coroutine
+coroutine.resume(netThread) --start networking
 while true do
 	term.write("minecoin>") --show that user can input info ('minecoin' is there to differentiate)
 	input = io.read()
 	if string.lower(input) == "exit" then
 		transmitAll(pChannel, rChannel, "off") --notify peer network that computer can no longer process Minecoin stuffs
-		coroutine.yield(netThread)
 		term.clear()
+		term.setCursorPos(1,1)
 		return
 	end
 end
