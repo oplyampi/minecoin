@@ -10,12 +10,15 @@ Channel 62646 is for generic Minecoin broadcasts
 Channel 7367 is for transactions
 ]]--
 --define constants
+os.loadAPI("enc")
 pChannel = 7337 --peer channel #
 mChannel = 62646 --generic channel #
 tChannel = 7367 --transaction notif. channel #
 rChannel = os.getComputerID()+1 --reply channel; computer ID +1
 
 clientVersion = "A1.0" --Current version of the Minecoin Client; displayed at the top of the terminal when the client is running
+
+running = true --shows that the minecoin client is running; used to stop networking upon program end
 
 --define variables
 numPeers = 0 --how many peers are connected?
@@ -26,57 +29,124 @@ modem = {} --holds the modem objects for each open side to allow access by 'mode
 
 --functions
 networking = function() --function that performs background messaging to uphold the p2p network
-	--while true do
-		local event, modemSide, senderChannel, replyChannel, message = os.pullEvent("modem_message")
-		if message ~= "" then
-			if message == "on" and senderChannel == pChannel then
-				--modem.transmit(pChannel, replyChannel, "on") --this line is causing messages to bounce around on the peer channel indefinitely; need to fix
-				numPeers = numPeers+1
-				peers[numPeers] = replyChannel
-			elseif message == "ping" and senderChannel == pChannel then
-				modem.transmit(replyChannel, rChannel, "true")
-			else
-				data = textutils.unserialize(message)
-			end
-		end
-	--end
+while running == true do
+local event, modemSide, senderChannel, replyChannel, message = os.pullEvent("modem_message")
+if message ~= "" then
+if message == "on" and senderChannel == pChannel then
+--modem.transmit(pChannel, replyChannel, "on") --this line is causing messages to bounce around on the peer channel indefinitely; need to fix
+numPeers = numPeers+1
+peers[numPeers] = replyChannel
+elseif message == "ping" and senderChannel == pChannel then
+modem.transmit(replyChannel, rChannel, "true")
+else
+data = textutils.unserialize(message)
+end
+end
+end
 end
 
 openAll = function() --opens all the modems
-	for _,side in pairs(rs.getSides()) do
-		if peripheral.getType(side) == "modem" then
-			modem[side] = peripheral.wrap(side)
-			openModems[side] = true
-			modem[side].open(pChannel)
-			modem[side].open(mChannel)
-			modem[side].open(tChannel)
-			modem[side].open(rChannel)
-		end
-	end
+for _,side in pairs(rs.getSides()) do
+if peripheral.getType(side) == "modem" then
+modem[side] = peripheral.wrap(side)
+openModems[side] = true
+modem[side].open(pChannel)
+modem[side].open(mChannel)
+modem[side].open(tChannel)
+modem[side].open(rChannel)
+end
+end
 end
 
 transmitAll = function(sendingChannel, replyChannel, message) --sends message using all open modems
-	for _,side in pairs(rs.getSides()) do
-		if openModems[side] == true then
-			modem[side].transmit(sendingChannel, replyChannel, message)
-		end
-	end
+for _,side in pairs(rs.getSides()) do
+if openModems[side] == true then
+modem[side].transmit(sendingChannel, replyChannel, message)
+end
+end
 end
 
-relay = function(ignoreModem, sendingChannel, replyChannel, message) --relays a message received on one modem through all other open modems
-	
+initRandom = function() --used to setup the random number generator. seed is designed to be as unique as possible.
+seed = os.time() + os.clock()
+seed = seed * os.day()
+seed = seed - os.computerID()
+math.randomseed(seed)
 end
 
---start main stuff
+generatePrivateKey = function() --generates a new random address (private key only)
+initRandom()
+keyP1 = math.random(1000, 9999)
+initRandom()
+keyP2 = math.random(1000, 9999)
+initRandom()
+keyP3 = math.random(1000, 9999)
+initRandom()
+keyP4 = math.random(1000, 9999)
+fKey = keyP1 .. keyP2 .. keyP3 .. keyP4
+fiKey = enc.checksum(fKey, 1000)
+finalKey = tostring(fiKey)
+return finalKey
+end
 
---broadcast to the peer-finding network that computer is online
-openAll()
-transmitAll(pChannel, rChannel, "on")
+getPublicKey = function(privateKey)
+	pKey = enc.encrypt(privateKey, privateKey)
+	return pKey
+end
 
-local netThread = coroutine.create(networking()) --define networking coroutine
+firstRun = function()
+	print("First-time setup...")
+	print("Creating files and folders...")
+	fs.makeDir(".minecoin")
+	fs.makeDir(".minecoin/user")
+	fs.makeDir(".minecoin/blocks")
+	fs.makeDir(".minecoin/transactions")
+	write("Do you have an existing Minecoin wallet? (Y/N)>")
+	input = read()
+	if string.lower(input) == "y" or string.lower(input) == "yes" then
+		print("Private key (you can add more after setup is complete)")
+		write("Key>")
+		input = read()
+		print("Calculating public key...")
+		pubKey = getPublicKey(input)
+		print(pubKey)
+		write("Is this your address? (Y/N)>")
+		input = read()
+	elseif string.lower(input) == "n" or string.lower(input) == "no" then
+		print("Creating new wallet. You can retry wallet import after setup is complete")
+		print("Generating private key...")
+		privKey = generatePrivateKey()
+		print("Saving private key...")
+		pubKey = getPublicKey(privKey)
+		wallet = fs.open(".minecoin/user/wallet.dat", "w")
+		wallet.write(pubKey)
+		wallet.close()
+		print("Calculating public key...")
+	else
+		print("Invalid input. Creating new wallet. You can import an old wallet, if needed, after setup is complete")
+	end	
+end
+
+
+--start main program
 term.clear()
 term.setCursorPos(1, 1)
 print("Minecoin Client Version "..clientVersion)
+
+if not fs.isDir(".minecoin") then --checks for existing minecoin stuffs
+firstRun()
+end
+
+openAll() --open all modems so that "on" broadcast goes as far as possible
+transmitAll(pChannel, rChannel, "on") --notify peer network that computer is able to process Minecoin stuffs
+local netThread = coroutine.create(networking) --define networking coroutine
+coroutine.resume(netThread) --start networking
 while true do
-	coroutine.resume(netThread) --start networking
+term.write("minecoin>") --show that user can input info ('minecoin' is there to differentiate)
+input = io.read()
+if string.lower(input) == "exit" then
+transmitAll(pChannel, rChannel, "off") --notify peer network that computer can no longer process Minecoin stuffs
+term.clear()
+term.setCursorPos(1,1)
+return
+end
 end
